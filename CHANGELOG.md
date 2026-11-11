@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 * Don't emit Me on the first parameter of an extension method - [#1118](https://github.com/icsharpcode/CodeConverter/issues/1118)
 * Truncate towards zero when converting a fractional number to an integer, instead of inheriting VB's rounding - [#1021](https://github.com/icsharpcode/CodeConverter/issues/1021)
+* Keep a variable name from binding to another symbol with the same name: keep `As T` on a local, `Using`, `For` or `For Each` variable (also for `var`) where needed, e.g. `For month As Integer` vs the `Month` function or a field, and qualify a generic type named like a variable (`Global.Item(Of Integer)`)
 
 ## [10.0.2] - 2026-11-08
 

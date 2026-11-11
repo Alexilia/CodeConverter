@@ -368,7 +368,7 @@ internal class MethodBodyExecutableStatementVisitor : CS.CSharpSyntaxVisitor<Syn
                 return false;
             variable = SyntaxFactory.VariableDeclarator(
                 SyntaxFactory.SingletonSeparatedList(SyntaxFactory.ModifiedIdentifier(_commonConversions.ConvertIdentifier(v.Identifier))),
-                node.Declaration.Type.IsVar ? null : SyntaxFactory.SimpleAsClause((TypeSyntax)node.Declaration.Type.Accept(_nodesVisitor)),
+                node.Declaration.Type.IsVar ? _commonConversions.CreateInferredAsClauseOrNull(node.Declaration.Type) : SyntaxFactory.SimpleAsClause((TypeSyntax)node.Declaration.Type.Accept(_nodesVisitor)),
                 null
             );
         } else {
@@ -413,7 +413,15 @@ internal class MethodBodyExecutableStatementVisitor : CS.CSharpSyntaxVisitor<Syn
     public override SyntaxList<StatementSyntax> VisitForEachStatement(CSSyntax.ForEachStatementSyntax node)
     {
         VisualBasicSyntaxNode variable;
-        if (node.Type.IsVar)
+        if (node.Type.IsVar && _commonConversions.CreateInferredAsClauseOrNull(node.Type) is { } inferredAsClause)
+        {
+            variable = SyntaxFactory.VariableDeclarator(
+                SyntaxFactory.SingletonSeparatedList(SyntaxFactory.ModifiedIdentifier(_commonConversions.ConvertIdentifier(node.Identifier))),
+                inferredAsClause,
+                null
+            );
+        }
+        else if (node.Type.IsVar)
         {
             variable = SyntaxFactory.IdentifierName(_commonConversions.ConvertIdentifier(node.Identifier));
         }

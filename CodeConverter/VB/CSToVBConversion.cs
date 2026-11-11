@@ -30,6 +30,8 @@ public class CSToVBConversion : ILanguageConversion
     }
     public async Task<Document> SingleSecondPassAsync(Document doc)
     {
+        doc = await ImplicitVariableTypeBinding.QualifyHiddenGenericTypesAsync(doc, _cancellationToken);
+        doc = await ImplicitVariableTypeBinding.RemoveInferredAsClausesAsync(doc, _cancellationToken);
         return await _csToVbProjectContentsConverter.OptionalOperations.SimplifyStatementsAsync<ImportsStatementSyntax>(doc, UnresolvedNamespaceDiagnosticId);
     }
 

@@ -487,7 +487,7 @@ internal class CommonConversions
                 declarators.Add(
                     SyntaxFactory.VariableDeclarator(
                         SyntaxFactory.SingletonSeparatedList(ExtractIdentifier(v)),
-                        declaration.Type.IsVar ? null : SyntaxFactory.SimpleAsClause(type),
+                        declaration.Type.IsVar ? CreateInferredAsClauseOrNull(declaration.Type) : SyntaxFactory.SimpleAsClause(type),
                         SyntaxFactory.EqualsValue((ExpressionSyntax)ConvertTopLevelExpression(v.Initializer.Value))
                     )
                 );
@@ -500,6 +500,9 @@ internal class CommonConversions
 
         return SyntaxFactory.SeparatedList(declarators);
     }
+
+    internal SimpleAsClauseSyntax CreateInferredAsClauseOrNull(CSSyntax.TypeSyntax varType) =>
+        ImplicitVariableTypeBinding.CreateInferredAsClauseOrNull(_semanticModel.GetSymbolInfo(varType).ExtractBestMatch<ITypeSymbol>(), VbSyntaxGenerator);
 
     public VisualBasicSyntaxNode ConvertTopLevelExpression(Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax topLevelExpression)
     {

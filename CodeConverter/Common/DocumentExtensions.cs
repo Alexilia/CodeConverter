@@ -16,18 +16,19 @@ internal static class DocumentExtensions
     public static async Task<Document> SimplifyStatementsAsync<TUsingDirectiveSyntax>(this Document convertedDocument, string unresolvedTypeDiagnosticId, CancellationToken cancellationToken)
         where TUsingDirectiveSyntax : SyntaxNode
     {
-        Func<SyntaxNode, bool> wouldBeSimplifiedIncorrectly =
+        Func<SyntaxNode, SemanticModel, bool> wouldBeSimplifiedIncorrectly =
             convertedDocument.Project.Language == LanguageNames.VisualBasic
                 ? VbWouldBeSimplifiedIncorrectly
-                : CsWouldBeSimplifiedIncorrectly;
+                : (n, _) => CsWouldBeSimplifiedIncorrectly(n);
         var originalRoot = await convertedDocument.GetSyntaxRootAsync(cancellationToken);
-        var nodesWithUnresolvedTypes = (await convertedDocument.GetSemanticModelAsync(cancellationToken)).GetDiagnostics(cancellationToken: cancellationToken)
+        var semanticModel = await convertedDocument.GetSemanticModelAsync(cancellationToken);
+        var nodesWithUnresolvedTypes = semanticModel.GetDiagnostics(cancellationToken: cancellationToken)
             .Where(d => d.Id == unresolvedTypeDiagnosticId && d.Location.IsInSource)
             .Select(d => originalRoot.FindNode(d.Location.SourceSpan).GetAncestor<TUsingDirectiveSyntax>())
             .ToLookup(d => (SyntaxNode) d);
         var nodesToConsider = originalRoot
             .DescendantNodes()
-            .Where(n => nodesWithUnresolvedTypes.Contains(n) || wouldBeSimplifiedIncorrectly(n))
+            .Where(n => nodesWithUnresolvedTypes.Contains(n) || wouldBeSimplifiedIncorrectly(n, semanticModel))
             .ToArray();
         var doNotSimplify = nodesToConsider
             .SelectMany(n => n.AncestorsAndSelf())
@@ -43,14 +44,16 @@ internal static class DocumentExtensions
         return document;
     }
 
-    private static bool VbWouldBeSimplifiedIncorrectly(SyntaxNode n)
+    private static bool VbWouldBeSimplifiedIncorrectly(SyntaxNode n, SemanticModel semanticModel)
     {
         //Roslyn bug: empty argument list gets removed and changes behaviour: https://github.com/dotnet/roslyn/issues/40442
         // (Also null Expression blows up even though that's how conditional invocation on an IdentifierName happens)
         return n is VBSyntax.InvocationExpressionSyntax ies && (ies.ArgumentList?.Arguments.Any() != true || ies.Expression == null)
                || n is VBSyntax.TryCastExpressionSyntax
                // Roslyn bug: Tries to simplify to "InferredFieldInitializerSyntax" which cannot be placed within an ObjectCreationExpression https://github.com/icsharpcode/CodeConverter/issues/484
-               || n is VBSyntax.ObjectCreationExpressionSyntax;
+               || n is VBSyntax.ObjectCreationExpressionSyntax
+               || ImplicitVariableTypeBinding.WouldBindDifferentlyWithoutAsClause(n, semanticModel)
+               || ImplicitVariableTypeBinding.IsQualifiedHiddenGenericType(n, semanticModel);
     }
 
     private static bool CsWouldBeSimplifiedIncorrectly(SyntaxNode n)
