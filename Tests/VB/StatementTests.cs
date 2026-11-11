@@ -682,10 +682,483 @@ End Class");
     }
 }", @"Friend Class TestClass
     Private Sub TestMethod(values As Integer())
-        For Each val In values
+        For Each val As Integer In values
             If val = 2 Then Continue For
             If val = 3 Then Exit For
         Next
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task ForEachVariableNamedLikeMemberKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class TestClass
+{
+    public string Company { get; set; }
+    public static string[] Companies = { ""x"", ""y"" };
+
+    public static string Build()
+    {
+        string r = """";
+        foreach (string company in Companies)
+            r += company;
+        return r;
+    }
+}", @"Friend Class TestClass
+    Public Property Company As String
+    Public Shared Companies As String() = {""x"", ""y""}
+
+    Public Shared Function Build() As String
+        Dim r = """"
+        For Each company As String In Companies
+            r += company
+        Next
+        Return r
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task ForVariableNamedLikeVisualBasicFunctionKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class TestClass
+{
+    int Sum()
+    {
+        int sum = 0;
+        for (int month = 1; month <= 12; month++)
+            sum += month;
+        return sum;
+    }
+}", @"Friend Class TestClass
+    Private Function Sum() As Integer
+        Dim lSum = 0
+        For month As Integer = 1 To 12
+            lSum += month
+        Next
+        Return lSum
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task ForVariableNamedLikeFieldDoesNotBindToFieldAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class TestClass
+{
+    int i;
+
+    void AddItems()
+    {
+        for (int i = 0; i < 3; i++)
+            AddItem();
+    }
+
+    void AddItem()
+    {
+        i++;
+    }
+}", @"Friend Class TestClass
+    Private i As Integer
+
+    Private Sub AddItems()
+        For i As Integer = 0 To 2
+            AddItem()
+        Next
+    End Sub
+
+    Private Sub AddItem()
+        i += 1
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task LocalNamedLikeItsTypeKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class Icon
+{
+    public static Icon FromHandle(int h) { return new Icon(); }
+}
+
+class TestClass
+{
+    Icon Create()
+    {
+        Icon icon = Icon.FromHandle(1);
+        return icon;
+    }
+}", @"Friend Class Icon
+    Public Shared Function FromHandle(h As Integer) As Icon
+        Return New Icon()
+    End Function
+End Class
+
+Friend Class TestClass
+    Private Function Create() As Icon
+        Dim icon As Icon = Icon.FromHandle(1)
+        Return icon
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task UsingVariableNamedLikeItsTypeKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class Resource : System.IDisposable
+{
+    public static Resource Open() { return new Resource(); }
+    public void Dispose() { }
+}
+
+class TestClass
+{
+    void Use()
+    {
+        using (Resource resource = Resource.Open())
+        {
+        }
+    }
+}", @"Friend Class Resource
+    Implements IDisposable
+    Public Shared Function Open() As Resource
+        Return New Resource()
+    End Function
+    Public Sub Dispose() Implements IDisposable.Dispose
+    End Sub
+End Class
+
+Friend Class TestClass
+    Private Sub Use()
+        Using resource As Resource = Resource.Open()
+        End Using
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task VarLoopVariablesNamedLikeMembersKeepTheInferredTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class TestClass
+{
+    int i;
+    public string Company { get; set; }
+
+    int Sum(string[] companies)
+    {
+        int sum = 0;
+        foreach (var month in new[] { 1, 2 })
+            sum += month;
+        for (var i = 0; i < 3; i++)
+            sum += i;
+        foreach (var company in companies)
+            sum += company.Length;
+        return sum;
+    }
+}", @"Friend Class TestClass
+    Private i As Integer
+    Public Property Company As String
+
+    Private Function Sum(companies As String()) As Integer
+        Dim lSum = 0
+        For Each month As Integer In {1, 2}
+            lSum += month
+        Next
+        For i As Integer = 0 To 2
+            lSum += i
+        Next
+        For Each company As String In companies
+            lSum += company.Length
+        Next
+        Return lSum
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task VarLocalsNamedLikeTheirTypeKeepTheInferredTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class Resource : System.IDisposable
+{
+    public static Resource Open() { return new Resource(); }
+    public void Dispose() { }
+}
+
+class TestClass
+{
+    void Use()
+    {
+        var resource = Resource.Open();
+        using (var other = Resource.Open())
+        {
+        }
+    }
+
+    void UseAgain()
+    {
+        using (var resource = Resource.Open())
+        {
+        }
+    }
+}", @"Friend Class Resource
+    Implements IDisposable
+    Public Shared Function Open() As Resource
+        Return New Resource()
+    End Function
+    Public Sub Dispose() Implements IDisposable.Dispose
+    End Sub
+End Class
+
+Friend Class TestClass
+    Private Sub Use()
+        Dim resource As Resource = Resource.Open()
+        Using other = Resource.Open()
+        End Using
+    End Sub
+
+    Private Sub UseAgain()
+        Using resource As Resource = Resource.Open()
+        End Using
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task LocalsNamedLikeTheTypeInTheirNameOfKeepTheirTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class Icon
+{
+}
+
+class TestClass
+{
+    void Explicit()
+    {
+        string icon = nameof(Icon);
+    }
+
+    void Inferred()
+    {
+        var icon = nameof(Icon);
+    }
+}", @"Friend Class Icon
+End Class
+
+Friend Class TestClass
+    Private Sub Explicit()
+        Dim icon As String = NameOf(Icon)
+    End Sub
+
+    Private Sub Inferred()
+        Dim icon As String = NameOf(Icon)
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task LoopVariableNamedLikeTypeInItsCollectionKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"class Item
+{
+    public static Item[] All() { return new Item[0]; }
+}
+
+class TestClass
+{
+    void M()
+    {
+        foreach (Item item in Item.All()) { }
+        foreach (var item in Item.All()) { }
+    }
+}", @"Friend Class Item
+    Public Shared Function All() As Item()
+        Return New Item(-1) {}
+    End Function
+End Class
+
+Friend Class TestClass
+    Private Sub M()
+        For Each item As Item In Item.All()
+        Next
+        For Each item As Item In Item.All()
+        Next
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task TypeNamedLikeVariableBehindANeededQualifierStaysInferredAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"namespace N
+{
+    class Icon
+    {
+        public static int Load() { return 1; }
+    }
+}
+
+class Res
+{
+    public class Icon
+    {
+        public static int Load() { return 1; }
+    }
+}
+
+class TestClass
+{
+    int M()
+    {
+        var icon = Res.Icon.Load();
+        var other = N.Icon.Load();
+        int typed = Res.Icon.Load();
+        return icon + other + typed;
+    }
+}", @"Namespace N
+    Friend Class Icon
+        Public Shared Function Load() As Integer
+            Return 1
+        End Function
+    End Class
+End Namespace
+
+Friend Class Res
+    Public Class Icon
+        Public Shared Function Load() As Integer
+            Return 1
+        End Function
+    End Class
+End Class
+
+Friend Class TestClass
+    Private Function M() As Integer
+        Dim icon = Res.Icon.Load()
+        Dim other = N.Icon.Load()
+        Dim typed As Integer = Res.Icon.Load()
+        Return icon + other + typed
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task GenericTypeNamedLikeVariableKeepsItsQualifierAsync()
+    {
+        // The compilation error is reported for the first pass, before the name is qualified (the self-verifying VariableNameBindingTests compile the result)
+        await TestConversionCSharpToVisualBasicAsync(@"class Item<T>
+{
+    public static Item<T> Create() { return null; }
+}
+
+class TestClass
+{
+    object M()
+    {
+        var item = Item<int>.Create();
+        var other = Item<string>.Create();
+        return other;
+    }
+}", @"Friend Class Item(Of T)
+    Public Shared Function Create() As Item(Of T)
+        Return Nothing
+    End Function
+End Class
+
+Friend Class TestClass
+    Private Function M() As Object
+        Dim item = Global.Item(Of Integer).Create()
+        Dim other = Global.Item(Of String).Create()
+        Return other
+    End Function
+End Class
+
+1 target compilation errors:
+BC32045: 'item' has no type parameters and so cannot have type arguments.");
+    }
+
+    [Fact]
+    public async Task LoopVariableNamedLikeNamespaceKeepsTypeAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"namespace Entity
+{
+    class E { }
+}
+
+class TestClass
+{
+    void M(string[] list)
+    {
+        foreach (var entity in list) { }
+        foreach (string entity in list) { }
+    }
+}", @"Namespace Entity
+    Friend Class E
+    End Class
+End Namespace
+
+Friend Class TestClass
+    Private Sub M(list As String())
+        For Each entity As String In list
+        Next
+        For Each entity As String In list
+        Next
+    End Sub
+End Class");
+    }
+
+    [Fact]
+    public async Task VariablesWithoutAnotherMeaningStayInferredAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(@"using System.Linq;
+
+class Item
+{
+    public static Item[] All() { return new Item[0]; }
+}
+
+class TestClass
+{
+    string Name { get; set; }
+
+    void M(int[] numbers, Item[] items)
+    {
+        foreach (Item item in items) { }
+        foreach (var item in items) { }
+        var res = from n in numbers where n > 5 select n;
+        foreach (var n in res) { }
+        foreach (int n in res) { }
+        for (int i = 0; i < 3; i++) { }
+        for (var i = 0; i < 3; i++) { }
+        var name = Name;
+        var other = new Item();
+    }
+}", @"Imports System.Linq
+
+Friend Class Item
+    Public Shared Function All() As Item()
+        Return New Item(-1) {}
+    End Function
+End Class
+
+Friend Class TestClass
+    Private Property Name As String
+
+    Private Sub M(numbers As Integer(), items As Item())
+        For Each item In items
+        Next
+        For Each item In items
+        Next
+        Dim res = From n In numbers Where n > 5 Select n
+        For Each n In res
+        Next
+        For Each n In res
+        Next
+        For i = 0 To 2
+        Next
+        For i = 0 To 2
+        Next
+        Dim name = Me.Name
+        Dim other = New Item()
     End Sub
 End Class");
     }
@@ -707,15 +1180,12 @@ End Class");
     }
 }", @"Friend Class TestClass
     Private Sub TestMethod(values As Integer())
-        For Each val In values
+        For Each val As Integer In values
             If val = 2 Then Continue For
             If val = 3 Then Exit For
         Next
     End Sub
-End Class
-
-1 target compilation errors:
-BC30516: Overload resolution failed because no accessible 'Val' accepts this number of arguments.");
+End Class");
     }
 
     [Fact]
@@ -902,7 +1372,7 @@ BC30451: 's' is not declared. It may be inaccessible due to its protection level
             @"Friend Class TestClass
     Private Sub TestMethod()
         Dim summary = 0
-        For month = 1 To 12
+        For month As Integer = 1 To 12
             summary += month
         Next
     End Sub
