@@ -24,15 +24,18 @@ internal static class DocumentExtensions
         var nodesToConsider = originalRoot
             .DescendantNodes()
             .Where(n => nodesWithUnresolvedTypes.Contains(n) || wouldBeSimplifiedIncorrectly(n, semanticModel))
-            .ToArray();
+            .ToImmutableHashSet();
         var doNotSimplify = nodesToConsider
             .SelectMany(n => n.AncestorsAndSelf())
             .ToImmutableHashSet();
         var toSimplify = originalRoot
             .DescendantNodes()
             .Where(n => !doNotSimplify.Contains(n));
-        var newRoot = originalRoot.ReplaceNodes(toSimplify, (_, rewritten) =>
-            rewritten.WithAdditionalAnnotations(Simplifier.Annotation)
+        // Simplifier.Expand already annotated the nodes it added, e.g. a cast for an argument's conversion
+        var newRoot = originalRoot.ReplaceNodes(toSimplify.Concat(nodesToConsider), (original, rewritten) =>
+            nodesToConsider.Contains(original)
+                ? rewritten.WithoutAnnotations(Simplifier.Annotation)
+                : rewritten.WithAdditionalAnnotations(Simplifier.Annotation)
         );
 
         var document = await convertedDocument.WithReducedRootAsync(newRoot, cancellationToken);
