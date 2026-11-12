@@ -265,4 +265,265 @@ End Class");
     End Sub
 End Class");
     }
+
+    [Fact]
+    public async Task CastSelectingConstructorOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public enum Img { None, Info }
+
+public class P
+{
+    public string V;
+    public P(Img i) { V = ""img""; }
+    public P(string s) { V = ""str""; }
+
+    public static string Create(object o)
+    {
+        return new P((Img)o).V;
+    }
+}",
+            @"Public Enum Img
+    None
+    Info
+End Enum
+
+Public Class P
+    Public V As String
+    Public Sub New(i As Img)
+        V = ""img""
+    End Sub
+    Public Sub New(s As String)
+        V = ""str""
+    End Sub
+
+    Public Shared Function Create(o As Object) As String
+        Return New P(CType(o, Img)).V
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastSelectingMethodOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public enum Img { None, Info }
+
+public class P
+{
+    public static string Show(Img i) { return ""img""; }
+    public static string Show(string s) { return ""str""; }
+
+    public static string Test(object o)
+    {
+        return Show((Img)o);
+    }
+}",
+            @"Public Enum Img
+    None
+    Info
+End Enum
+
+Public Class P
+    Public Shared Function Show(i As Img) As String
+        Return ""img""
+    End Function
+    Public Shared Function Show(s As String) As String
+        Return ""str""
+    End Function
+
+    Public Shared Function Test(o As Object) As String
+        Return Show(CType(o, Img))
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastSelectingNumericConstructorOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public class P
+{
+    public string V;
+    public P(int i) { V = ""int""; }
+    public P(long l) { V = ""long""; }
+
+    public static string FromLong(long l) { return new P((int)l).V; }
+    public static string FromInt(int i) { return new P((long)i).V; }
+}",
+            @"Public Class P
+    Public V As String
+    Public Sub New(i As Integer)
+        V = ""int""
+    End Sub
+    Public Sub New(l As Long)
+        V = ""long""
+    End Sub
+
+    Public Shared Function FromLong(l As Long) As String
+        Return New P(CInt(l)).V
+    End Function
+    Public Shared Function FromInt(i As Integer) As String
+        Return New P(CLng(i)).V
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastNotSelectingAnOverloadIsStillRemovedAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public enum Img { None, Info }
+
+public class S
+{
+    public S(int i) { }
+    public static S Create(Img i) { return null; }
+    public static S CreateFrom(object o) { return Create((Img)o); }
+    public static S CreateNumbered(long l) { return new S((int)l); }
+}",
+            @"Public Enum Img
+    None
+    Info
+End Enum
+
+Public Class S
+    Public Sub New(i As Integer)
+    End Sub
+    Public Shared Function Create(i As Img) As S
+        Return Nothing
+    End Function
+    Public Shared Function CreateFrom(o As Object) As S
+        Return Create(o)
+    End Function
+    Public Shared Function CreateNumbered(l As Long) As S
+        Return New S(l)
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastWithinConstructorArgumentSelectingOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public class P
+{
+    public P(int i) { }
+    public P(long l) { }
+
+    public static P Conditional(bool b, long l) { return new P(b ? (int)l : 0); }
+    public static P Parenthesized(long l) { return new P(((int)l)); }
+}",
+            @"Public Class P
+    Public Sub New(i As Integer)
+    End Sub
+    Public Sub New(l As Long)
+    End Sub
+
+    Public Shared Function Conditional(b As Boolean, l As Long) As P
+        Return New P(If(b, CInt(l), 0))
+    End Function
+    Public Shared Function Parenthesized(l As Long) As P
+        Return New P(CInt(l))
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task TruncatingCastSelectingConstructorOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public class P
+{
+    public P(int i) { }
+    public P(double d) { }
+
+    public static P Truncated(double d) { return new P((int)d); }
+}",
+            @"Public Class P
+    Public Sub New(i As Integer)
+    End Sub
+    Public Sub New(d As Double)
+    End Sub
+
+    Public Shared Function Truncated(d As Double) As P
+        Return New P(CInt(Math.Truncate(d)))
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastInLambdaSelectingConstructorOverloadIsKeptAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"using System;
+
+public class P
+{
+    public P(Func<int> f) { }
+    public P(Func<long> f) { }
+
+    public static P Expression(long l) { return new P(() => (int)l); }
+    public static P Block(long l) { return new P(() => { Console.WriteLine(l); return (int)l; }); }
+}
+
+public class Q
+{
+    public Q(Func<long> f) { }
+
+    public static Q Single(int i) { return new Q(() => (long)i); }
+}",
+            @"Imports System
+
+Public Class P
+    Public Sub New(f As Func(Of Integer))
+    End Sub
+    Public Sub New(f As Func(Of Long))
+    End Sub
+
+    Public Shared Function Expression(l As Long) As P
+        Return New P(Function() CInt(l))
+    End Function
+    Public Shared Function Block(l As Long) As P
+        Return New P(Function()
+                         Console.WriteLine(l)
+                         Return CInt(l)
+                     End Function)
+    End Function
+End Class
+
+Public Class Q
+    Public Sub New(f As Func(Of Long))
+    End Sub
+
+    Public Shared Function [Single](i As Integer) As Q
+        Return New Q(Function() i)
+    End Function
+End Class");
+    }
+
+    [Fact]
+    public async Task CastInConditionalAccessCallNotSelectingAnOverloadIsStillRemovedAsync()
+    {
+        await TestConversionCSharpToVisualBasicAsync(
+            @"public class C
+{
+    public void Show(int i) { }
+
+    public void M(C c, object o, long l)
+    {
+        c?.Show((int)o);
+        c?.Show((int)l);
+    }
+}",
+            @"Public Class C
+    Public Sub Show(i As Integer)
+    End Sub
+
+    Public Sub M(c As C, o As Object, l As Long)
+        c?.Show(o)
+        c?.Show(l)
+    End Sub
+End Class");
+    }
 }
