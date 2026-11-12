@@ -51,7 +51,8 @@ internal static class DocumentExtensions
                // Roslyn bug: Tries to simplify to "InferredFieldInitializerSyntax" which cannot be placed within an ObjectCreationExpression https://github.com/icsharpcode/CodeConverter/issues/484
                || n is VBSyntax.ObjectCreationExpressionSyntax
                || ImplicitVariableTypeBinding.WouldBindDifferentlyWithoutAsClause(n, semanticModel)
-               || ImplicitVariableTypeBinding.IsQualifiedHiddenGenericType(n, semanticModel);
+               || ImplicitVariableTypeBinding.IsQualifiedHiddenGenericType(n, semanticModel)
+               || OverloadSelectingCasts.IsSelectingOverload(n, semanticModel);
     }
 
     private static bool CsWouldBeSimplifiedIncorrectly(SyntaxNode n)
