@@ -38,30 +38,49 @@ internal static class ImplicitVariableTypeBinding
         var removable = declarators.Where(d => !WouldBindDifferentlyWithoutAsClause(d, semanticModel)).ToArray();
         if (!removable.Any()) return document;
 
-        var withAsClauses = new Dictionary<SyntaxAnnotation, (SyntaxNode Declarator, IReadOnlyCollection<string> ErrorIds)>();
+        var withAsClauses = new Dictionary<SyntaxAnnotation, (SyntaxNode Original, SyntaxNode Rewritten)>();
         var withoutAsClauses = document.WithSyntaxRoot(root.ReplaceNodes(removable, (original, rewritten) => {
             var annotation = new SyntaxAnnotation(RemovedAsClauseKind);
-            withAsClauses.Add(annotation, (rewritten, GetErrorIds(original, semanticModel)));
+            withAsClauses.Add(annotation, (original, rewritten));
             return WithoutAsClause(original, rewritten).WithAdditionalAnnotations(annotation);
         }));
         var newRoot = await withoutAsClauses.GetSyntaxRootAsync(cancellationToken);
-        var newSemanticModel = await withoutAsClauses.GetSemanticModelAsync(cancellationToken);
+        var errorsWithout = new StatementErrors(await withoutAsClauses.GetSemanticModelAsync(cancellationToken));
+        var errorsWith = new StatementErrors(semanticModel);
         var toRestore = newRoot.GetAnnotatedNodes(RemovedAsClauseKind)
-            .Where(n => GetErrorIds(n, newSemanticModel).Except(withAsClauses[n.GetAnnotations(RemovedAsClauseKind).Single()].ErrorIds).Any())
+            .Where(n => errorsWithout.GetIds(n) is { Count: > 0 } newErrors
+                        && newErrors.Except(errorsWith.GetIds(withAsClauses[n.GetAnnotations(RemovedAsClauseKind).Single()].Original)).Any())
             .ToArray();
         return toRestore.Any()
-            ? withoutAsClauses.WithSyntaxRoot(newRoot.ReplaceNodes(toRestore, (original, _) => withAsClauses[original.GetAnnotations(RemovedAsClauseKind).Single()].Declarator.WithAdditionalAnnotations(NeededAsClause)))
+            ? withoutAsClauses.WithSyntaxRoot(newRoot.ReplaceNodes(toRestore, (original, _) => withAsClauses[original.GetAnnotations(RemovedAsClauseKind).Single()].Rewritten.WithAdditionalAnnotations(NeededAsClause)))
             : withoutAsClauses;
     }
 
     private const string RemovedAsClauseKind = "CodeConverter.RemovedInferredAsClause";
     private static readonly SyntaxAnnotation NeededAsClause = new("CodeConverter.NeededInferredAsClause");
 
-    /// <remarks>The statement declaring the variable: for a loop, its first line, which holds the collection or bounds.</remarks>
-    private static IReadOnlyCollection<string> GetErrorIds(SyntaxNode declaratorOrControlVariable, SemanticModel semanticModel) =>
-        declaratorOrControlVariable.FirstAncestorOrSelf<VBSyntax.StatementSyntax>() is { } statement
-            ? new HashSet<string>(semanticModel.GetDiagnostics(statement.Span).Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Id))
-            : Array.Empty<string>();
+    /// <summary>
+    /// Error ids in the statement declaring a variable: for a loop, its first line, which holds the collection or bounds.
+    /// </summary>
+    /// <remarks>Getting diagnostics compiles the whole containing member, so it's done once per member.</remarks>
+    private sealed class StatementErrors
+    {
+        private readonly SemanticModel _semanticModel;
+        private readonly Dictionary<SyntaxNode, Diagnostic[]> _errorsByMember = new();
+
+        public StatementErrors(SemanticModel semanticModel) => _semanticModel = semanticModel;
+
+        public IReadOnlyCollection<string> GetIds(SyntaxNode declaratorOrControlVariable)
+        {
+            if (declaratorOrControlVariable.FirstAncestorOrSelf<VBSyntax.StatementSyntax>() is not { } statement) return Array.Empty<string>();
+            var member = (SyntaxNode)statement.FirstAncestorOrSelf<VBSyntax.MethodBlockBaseSyntax>() ?? statement;
+            if (!_errorsByMember.TryGetValue(member, out var errors)) {
+                errors = _semanticModel.GetDiagnostics(member.Span).Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+                _errorsByMember.Add(member, errors);
+            }
+            return new HashSet<string>(errors.Where(d => statement.Span.Contains(d.Location.SourceSpan)).Select(d => d.Id));
+        }
+    }
 
     /// <remarks>A loop control variable without "As" is an identifier, as VB parses it.</remarks>
     private static SyntaxNode WithoutAsClause(VBSyntax.VariableDeclaratorSyntax original, VBSyntax.VariableDeclaratorSyntax rewritten) =>
@@ -175,9 +194,9 @@ internal static class ImplicitVariableTypeBinding
     };
 
     private static bool IsHiddenGenericType(VBSyntax.GenericNameSyntax genericName, SemanticModel semanticModel) =>
-        GetType(genericName, semanticModel) is not null
-        && semanticModel.LookupSymbols(genericName.SpanStart, name: genericName.Identifier.ValueText)
-            .Any(s => s.Kind is not (SymbolKind.NamedType or SymbolKind.Namespace or SymbolKind.TypeParameter));
+        semanticModel.LookupSymbols(genericName.SpanStart, name: genericName.Identifier.ValueText)
+            .Any(s => s.Kind is not (SymbolKind.NamedType or SymbolKind.Namespace or SymbolKind.TypeParameter))
+        && GetType(genericName, semanticModel) is not null;
 
     /// <summary>
     /// Names of a type or namespace in an expression that the reducer can leave unqualified,
